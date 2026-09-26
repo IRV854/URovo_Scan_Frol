@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ТСД Сканер - Честный Знак</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --warning: #d97706;
+            --text: #1f2937;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--primary);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #4b5563;
+        }
+
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-bottom: 12px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary { background: var(--primary); }
+        .btn-primary:active { background: var(--primary-hover); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+
+        .scan-status {
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .status-ready { background: #e0f2fe; color: #0369a1; border: 2px solid #bae6fd; }
+        .status-ok { background: #dcfce7; color: #15803d; border: 2px solid #86efac; }
+        .status-duplicate { background: #fee2e2; color: #b91c1c; border: 2px solid #fca5a5; animation: shake 0.3s; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+
+        .counter-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f3f4f6;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .counter-val {
+            font-size: 24px;
+            color: var(--primary);
+        }
+
+        .code-list {
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+
+        .code-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            font-family: monospace;
+            font-size: 13px;
+            word-break: break-all;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .code-item:nth-child(even) { background: #ffffff; }
+
+        .hidden { display: none !important; }
+
+        .info-text {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: -6px;
+            margin-bottom: 12px;
+        }
+
+        .badge {
+            background: #3b82f6;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        📲 ТСД UROVO RT40 — Маркировка
+    </div>
+
+    <!-- ЭКРАН 1: НАСТРОЙКИ И НАЧАЛО СЕССИИ -->
+    <div id="screen-start" class="card">
+        <label for="bot-token">Токен Telegram Бота:</label>
+        <input type="password" id="bot-token" placeholder="123456789:ABCdefGhIJKlmNoPQ..." autocomplete="off">
+        <div class="info-text">Токен будет сохранен в памяти ТСД.</div>
+
+        <label for="file-name-input">Наименование файла:</label>
+        <input type="text" id="file-name-input" placeholder="Например: Склад_Приемка_Партия1">
+        
+        <div class="info-text">
+            Итоговое имя: <b id="filename-preview">Имя_YYYY-MM-DD.txt</b>
+        </div>
+
+        <button class="btn btn-primary" onclick="startScanning()">
+            ▶️ Начать сканирование
+        </button>
+    </div>
+
+    <!-- ЭКРАН 2: ПРОЦЕСС СКАНИРОВАНИЯ -->
+    <div id="screen-scan" class="card hidden">
+        <div class="counter-box">
+            <span>Имя файла:</span>
+            <span id="active-filename" style="font-size: 13px; color: #4b5563;">-</span>
+        </div>
+
+        <div id="scan-status-box" class="scan-status status-ready">
+            Готов к сканированию...
+        </div>
+
+        <div class="counter-box">
+            <span>Отсканировано кодов:</span>
+            <span id="code-count" class="counter-val">0</span>
+        </div>
+
+        <!-- Поле ввода для аппаратного сканера UROVO -->
+        <input type="text" id="barcode-input" placeholder="Сканируйте код..." autocomplete="off" autofocus>
+
+        <div style="margin-bottom: 8px; font-weight: 600; font-size: 14px;">
+            Последние коды:
+        </div>
+        <div id="code-list" class="code-list">
+            <div class="code-item" style="color: #9ca3af; justify-content: center;">Список пуст</div>
+        </div>
+
+        <br>
+        <button class="btn btn-danger" onclick="finishScanning()">
+            ⏹️ Завершить и отправить
+        </button>
+    </div>
+
+    <!-- ЭКРАН 3: ИТОГИ И ОТПРАВКА -->
+    <div id="screen-finish" class="card hidden">
+        <h2 style="text-align: center; margin-bottom: 12px; color: var(--primary);">
+            🎉 Сканирование завершено
+        </h2>
+
+        <div class="counter-box">
+            <span>Всего кодов:</span>
+            <span id="final-count" class="counter-val">0</span>
+        </div>
+
+        <div class="counter-box">
+            <span>Получатель ID:</span>
+            <span class="badge">397818829</span>
+        </div>
+
+        <div id="telegram-status" class="scan-status status-ready" style="font-size: 14px;">
+            Отправка файла в Telegram...
+        </div>
+
+        <button id="retry-btn" class="btn btn-primary hidden" onclick="sendToTelegram()">
+            🔄 Повторить отправку
+        </button>
+
+        <br>
+        <button class="btn btn-success" onclick="downloadFileLocally()">
+            💾 Скачать `.txt` на ТСД
+        </button>
+
+        <br>
+        <button class="btn btn-primary" style="background: #4b5563;" onclick="resetToStart()">
+            🏠 Новая сессия
+        </button>
+    </div>
+
+    <script>
+        const TARGET_TELEGRAM_ID = "397818829";
+        let scannedCodes = new Set();
+        let fullFileName = "";
+        let audioCtx = null;
+
+        // Инициализация
+        document.addEventListener("DOMContentLoaded", () => {
+            const savedToken = localStorage.getItem("urovo_tg_bot_token");
+            if (savedToken) {
+                document.getElementById("bot-token").value = savedToken;
+            }
+
+            const fileNameInput = document.getElementById("file-name-input");
+            fileNameInput.addEventListener("input", updateFilenamePreview);
+            updateFilenamePreview();
+
+            // Автофокус для сканера при потере фокуса
+            const barcodeInput = document.getElementById("barcode-input");
+            barcodeInput.addEventListener("blur", () => {
+                if (!document.getElementById("screen-scan").classList.contains("hidden")) {
+                    setTimeout(() => barcodeInput.focus(), 100);
+                }
+            });
+
+            // Обработка ввода со сканера (Штрихкод приходит завершаясь клавишей Enter)
+            barcodeInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    processScannedCode(barcodeInput.value.trim());
+                    barcodeInput.value = "";
+                }
+            });
+        });
+
+        function getFormattedDate() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function updateFilenamePreview() {
+            const baseName = document.getElementById("file-name-input").value.trim() || "Маркировка";
+            const dateStr = getFormattedDate();
+            fullFileName = `${baseName}_${dateStr}.txt`;
+            document.getElementById("filename-preview").textContent = fullFileName;
+        }
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Звук успешного сканирования (Высокий чистый тон)
+        function playSuccessBeep() {
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.12);
+            } catch (e) { console.error(e); }
+        }
+
+        // Звук ДУБЛИКАТА (Низкий тревожный двойной гудок + вибрация ТСД)
+        function playErrorBeep() {
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sawtooth";
+                osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+
+                if (navigator.vibrate) {
+                    navigator.vibrate([150, 100, 150]);
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function startScanning() {
+            const token = document.getElementById("bot-token").value.trim();
+            if (!token) {
+                alert("Пожалуйста, укажите токен Telegram бота!");
+                return;
+            }
+
+            localStorage.setItem("urovo_tg_bot_token", token);
+            updateFilenamePreview();
+
+            scannedCodes.clear();
+            updateUIList();
+
+            document.getElementById("screen-start").classList.add("hidden");
+            document.getElementById("screen-scan").classList.remove("hidden");
+            document.getElementById("active-filename").textContent = fullFileName;
+
+            const barcodeInput = document.getElementById("barcode-input");
+            barcodeInput.focus();
+        }
+
+        function processScannedCode(code) {
+            if (!code) return;
+
+            const statusBox = document.getElementById("scan-status-box");
+
+            // Проверка на ДУБЛИКАТ
+            if (scannedCodes.has(code)) {
+                playErrorBeep();
+                statusBox.className = "scan-status status-duplicate";
+                statusBox.innerHTML = `⚠️ ДУБЛИКАТ!<br><span style="font-size:12px; font-weight:normal;">${escapeHtml(code)}</span>`;
+            } else {
+                // Новый уникальный код
+                scannedCodes.add(code);
+                playSuccessBeep();
+                statusBox.className = "scan-status status-ok";
+                statusBox.innerHTML = `✅ ДОБАВЛЕН<br><span style="font-size:12px; font-weight:normal;">${escapeHtml(code)}</span>`;
+                
+                updateUIList();
+            }
+        }
+
+        function updateUIList() {
+            document.getElementById("code-count").textContent = scannedCodes.size;
+            const listDiv = document.getElementById("code-list");
+
+            if (scannedCodes.size === 0) {
+                listDiv.innerHTML = `<div class="code-item" style="color: #9ca3af; justify-content: center;">Список пуст</div>`;
+                return;
+            }
+
+            const arr = Array.from(scannedCodes).reverse(); // Показываем свежие сверху
+            listDiv.innerHTML = arr.map((code, idx) => `
+                <div class="code-item">
+                    <span>${arr.length - idx}. ${escapeHtml(code)}</span>
+                </div>
+            `).join("");
+        }
+
+        function finishScanning() {
+            if (scannedCodes.size === 0) {
+                if (!confirm("Не отсканировано ни одного кода. Завершить?")) {
+                    return;
+                }
+            }
+
+            document.getElementById("screen-scan").classList.add("hidden");
+            document.getElementById("screen-finish").classList.remove("hidden");
+            document.getElementById("final-count").textContent = scannedCodes.size;
+
+            sendToTelegram();
+        }
+
+        async function sendToTelegram() {
+            const token = localStorage.getItem("urovo_tg_bot_token");
+            const statusDiv = document.getElementById("telegram-status");
+            const retryBtn = document.getElementById("retry-btn");
+
+            statusDiv.className = "scan-status status-ready";
+            statusDiv.textContent = "⏳ Отправка файла в Telegram...";
+            retryBtn.classList.add("hidden");
+
+            // Формируем текст файла (каждый код с новой строки)
+            const fileContent = Array.from(scannedCodes).join("\r\n");
+            const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+
+            const formData = new FormData();
+            formData.append("chat_id", TARGET_TELEGRAM_ID);
+            formData.append("document", blob, fullFileName);
+            formData.append("caption", `📊 Отчет по сканированию\n📁 Файл: ${fullFileName}\n🔢 Кодов: ${scannedCodes.size}`);
+
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.ok) {
+                    statusDiv.className = "scan-status status-ok";
+                    statusDiv.innerHTML = `🚀 Файл успешно отправлен!<br>Пользователю ID: ${TARGET_TELEGRAM_ID}`;
+                } else {
+                    throw new Error(result.description || "ошибка Telegram API");
+                }
+            } catch (err) {
+                console.error(err);
+                statusDiv.className = "scan-status status-duplicate";
+                statusDiv.innerHTML = `❌ Ошибка отправки: ${escapeHtml(err.message)}`;
+                retryBtn.classList.remove("hidden");
+            }
+        }
+
+        function downloadFileLocally() {
+            const fileContent = Array.from(scannedCodes).join("\r\n");
+            const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = fullFileName;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        function resetToStart() {
+            if (confirm("Начать новую сессию? Текущий список кодов будет очищен.")) {
+                document.getElementById("screen-finish").classList.add("hidden");
+                document.getElementById("screen-start").classList.remove("hidden");
+                document.getElementById("file-name-input").value = "";
+                updateFilenamePreview();
+            }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+    </script>
+</body>
+</html>
