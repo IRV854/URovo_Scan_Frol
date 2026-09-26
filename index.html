@@ -61,18 +61,19 @@
             color: #4b5563;
         }
 
-        input[type="text"], input[type="password"] {
+        input[type="text"], input[type="password"], select {
             width: 100%;
             padding: 12px;
             border: 2px solid #d1d5db;
             border-radius: 6px;
-            font-size: 16px;
+            font-size: 15px;
             margin-bottom: 12px;
             outline: none;
+            background: #fff;
             transition: border-color 0.2s;
         }
 
-        input[type="text"]:focus {
+        input[type="text"]:focus, select:focus {
             border-color: var(--primary);
         }
 
@@ -183,16 +184,29 @@
 
     <!-- ЭКРАН 1: НАСТРОЙКИ И НАЧАЛО СЕССИИ -->
     <div id="screen-start" class="card">
+        <label for="send-method-select">Способ отправки:</label>
+        <select id="send-method-select" onchange="toggleProxyInput()">
+            <option value="proxy">⚡ Через Google-шлюз (для РФ / Склада)</option>
+            <option value="direct">🌐 Прямой Telegram API (Требуется VPN)</option>
+        </select>
+
+        <div id="proxy-container">
+            <label for="proxy-url-input">URL Google Apps Script:</label>
+            <input type="text" id="proxy-url-input" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+        </div>
+
         <label for="bot-token">Токен Telegram Бота:</label>
         <input type="password" id="bot-token" placeholder="123456789:ABCdefGhIJKlmNoPQ..." autocomplete="off">
         
         <button class="btn btn-info" onclick="testTelegramConnection()">
-            📡 Проверить связь с Telegram
+            📡 Проверить связь
         </button>
 
         <div id="test-status" class="scan-status hidden" style="font-size: 14px; margin-top: 8px;"></div>
 
-        <label for="file-name-input" style="margin-top: 12px;">Наименование файла:</label>
+        <hr style="margin: 12px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+        <label for="file-name-input">Наименование файла:</label>
         <input type="text" id="file-name-input" placeholder="Например: Склад_Приемка_Партия1">
         
         <div class="info-text">
@@ -220,7 +234,7 @@
             <span id="code-count" class="counter-val">0</span>
         </div>
 
-        <!-- Поле ввода для аппаратного сканера UROVO -->
+        <!-- Поле ввода для сканера UROVO -->
         <input type="text" id="barcode-input" placeholder="Сканируйте код..." autocomplete="off" autofocus>
 
         <div style="margin-bottom: 8px; font-weight: 600; font-size: 14px;">
@@ -282,6 +296,14 @@
                 document.getElementById("bot-token").value = savedToken;
             }
 
+            const savedMethod = localStorage.getItem("urovo_send_method") || "proxy";
+            document.getElementById("send-method-select").value = savedMethod;
+
+            const savedProxyUrl = localStorage.getItem("urovo_proxy_url") || "";
+            document.getElementById("proxy-url-input").value = savedProxyUrl;
+
+            toggleProxyInput();
+
             const fileNameInput = document.getElementById("file-name-input");
             fileNameInput.addEventListener("input", updateFilenamePreview);
             updateFilenamePreview();
@@ -294,7 +316,7 @@
                 }
             });
 
-            // Обработка ввода со сканера (Штрихкод приходит завершаясь клавишей Enter)
+            // Обработка ввода со сканера (Enter на конце)
             barcodeInput.addEventListener("keydown", (e) => {
                 if (e.key === "Enter") {
                     e.preventDefault();
@@ -303,6 +325,16 @@
                 }
             });
         });
+
+        function toggleProxyInput() {
+            const method = document.getElementById("send-method-select").value;
+            const container = document.getElementById("proxy-container");
+            if (method === "proxy") {
+                container.classList.remove("hidden");
+            } else {
+                container.classList.add("hidden");
+            }
+        }
 
         function getFormattedDate() {
             const now = new Date();
@@ -325,7 +357,6 @@
             }
         }
 
-        // Звук успешного сканирования (Высокий тон)
         function playSuccessBeep() {
             try {
                 initAudio();
@@ -341,7 +372,6 @@
             } catch (e) { console.error(e); }
         }
 
-        // Звук ДУБЛИКАТА (Низкий тон + Вибрация)
         function playErrorBeep() {
             try {
                 initAudio();
@@ -361,9 +391,21 @@
             } catch (e) { console.error(e); }
         }
 
-        // ПРОВЕРКА СВЯЗИ С TELEGRAM
-        async function testTelegramConnection() {
+        function saveSettings() {
             const token = document.getElementById("bot-token").value.trim();
+            const method = document.getElementById("send-method-select").value;
+            const proxyUrl = document.getElementById("proxy-url-input").value.trim();
+
+            localStorage.setItem("urovo_tg_bot_token", token);
+            localStorage.setItem("urovo_send_method", method);
+            localStorage.setItem("urovo_proxy_url", proxyUrl);
+
+            return { token, method, proxyUrl };
+        }
+
+        // ПРОВЕРКА СВЯЗИ
+        async function testTelegramConnection() {
+            const { token, method, proxyUrl } = saveSettings();
             const statusDiv = document.getElementById("test-status");
 
             if (!token) {
@@ -371,39 +413,75 @@
                 return;
             }
 
+            if (method === "proxy" && !proxyUrl) {
+                alert("Пожалуйста, укажите URL Google Apps Script!");
+                return;
+            }
+
             statusDiv.classList.remove("hidden");
             statusDiv.className = "scan-status status-ready";
-            statusDiv.textContent = "⏳ Проверка соединения с Telegram...";
+            statusDiv.textContent = "⏳ Проверка соединения...";
 
             try {
-                const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-                const data = await response.json();
+                if (method === "proxy") {
+                    // Проверка через Google-шлюз
+                    const payload = {
+                        token: token,
+                        chat_id: TARGET_TELEGRAM_ID,
+                        file_name: "test_connection.txt",
+                        file_content: "Тест связи"
+                    };
 
-                if (data.ok) {
-                    statusDiv.className = "scan-status status-ok";
-                    statusDiv.innerHTML = `✅ Связь есть!<br>Бот: <b>@${escapeHtml(data.result.username)}</b>`;
-                    localStorage.setItem("urovo_tg_bot_token", token);
+                    const response = await fetch(proxyUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await response.json();
+
+                    if (data.ok) {
+                        statusDiv.className = "scan-status status-ok";
+                        statusDiv.innerHTML = `✅ Шлюз работает!<br>Тестовое сообщение доставлено.`;
+                    } else {
+                        statusDiv.className = "scan-status status-duplicate";
+                        statusDiv.innerHTML = `❌ Ошибка шлюза:<br>${escapeHtml(data.error || data.description || "Неверный ответ")}`;
+                    }
                 } else {
-                    statusDiv.className = "scan-status status-duplicate";
-                    statusDiv.innerHTML = `❌ Ошибка токена:<br>${escapeHtml(data.description || "Неверный токен")}`;
+                    // Прямая проверка Telegram API
+                    const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+                    const data = await response.json();
+
+                    if (data.ok) {
+                        statusDiv.className = "scan-status status-ok";
+                        statusDiv.innerHTML = `✅ Прямая связь есть!<br>Бот: <b>@${escapeHtml(data.result.username)}</b>`;
+                    } else {
+                        statusDiv.className = "scan-status status-duplicate";
+                        statusDiv.innerHTML = `❌ Ошибка токена:<br>${escapeHtml(data.description || "Неверный токен")}`;
+                    }
                 }
             } catch (err) {
                 statusDiv.className = "scan-status status-duplicate";
-                statusDiv.innerHTML = `❌ Ошибка сети (Failed to fetch):<br><span style="font-size:12px; font-weight:normal;">Проверьте интернет, Wi-Fi складской сети или дату/время на ТСД.</span>`;
+                statusDiv.innerHTML = `❌ Ошибка соединения (Failed to fetch):<br><span style="font-size:12px; font-weight:normal;">Проверьте интернет или правильность URL шлюза.</span>`;
             }
         }
 
         function startScanning() {
-            const token = document.getElementById("bot-token").value.trim();
+            const { token, method, proxyUrl } = saveSettings();
+
             if (!token) {
                 alert("Пожалуйста, укажите токен Telegram бота!");
                 return;
             }
 
-            localStorage.setItem("urovo_tg_bot_token", token);
+            if (method === "proxy" && !proxyUrl) {
+                alert("Пожалуйста, вставьте URL Google Apps Script!");
+                return;
+            }
+
             updateFilenamePreview();
 
-            // ПОЛНАЯ ОЧИСТКА СОСТОЯНИЯ ДЛЯ НОВОЙ СЕССИИ
+            // Очистка перед новой сессией
             scannedCodes.clear();
             const barcodeInput = document.getElementById("barcode-input");
             barcodeInput.value = "";
@@ -426,13 +504,11 @@
 
             const statusBox = document.getElementById("scan-status-box");
 
-            // Проверка на ДУБЛИКАТ
             if (scannedCodes.has(code)) {
                 playErrorBeep();
                 statusBox.className = "scan-status status-duplicate";
                 statusBox.innerHTML = `⚠️ ДУБЛИКАТ!<br><span style="font-size:12px; font-weight:normal;">${escapeHtml(code)}</span>`;
             } else {
-                // Новый уникальный код
                 scannedCodes.add(code);
                 playSuccessBeep();
                 statusBox.className = "scan-status status-ok";
@@ -475,6 +551,9 @@
 
         async function sendToTelegram() {
             const token = localStorage.getItem("urovo_tg_bot_token");
+            const method = localStorage.getItem("urovo_send_method") || "proxy";
+            const proxyUrl = localStorage.getItem("urovo_proxy_url");
+
             const statusDiv = document.getElementById("telegram-status");
             const retryBtn = document.getElementById("retry-btn");
 
@@ -483,26 +562,52 @@
             retryBtn.classList.add("hidden");
 
             const fileContent = Array.from(scannedCodes).join("\r\n");
-            const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
-
-            const formData = new FormData();
-            formData.append("chat_id", TARGET_TELEGRAM_ID);
-            formData.append("document", blob, fullFileName);
-            formData.append("caption", `📊 Отчет по сканированию\n📁 Файл: ${fullFileName}\n🔢 Кодов: ${scannedCodes.size}`);
 
             try {
-                const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
-                    method: "POST",
-                    body: formData
-                });
+                if (method === "proxy") {
+                    // Отправка через Google-шлюз
+                    const payload = {
+                        token: token,
+                        chat_id: TARGET_TELEGRAM_ID,
+                        file_name: fullFileName,
+                        file_content: fileContent
+                    };
 
-                const result = await response.json();
+                    const response = await fetch(proxyUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify(payload)
+                    });
 
-                if (result.ok) {
-                    statusDiv.className = "scan-status status-ok";
-                    statusDiv.innerHTML = `🚀 Файл успешно отправлен!<br>Пользователю ID: ${TARGET_TELEGRAM_ID}`;
+                    const result = await response.json();
+
+                    if (result.ok) {
+                        statusDiv.className = "scan-status status-ok";
+                        statusDiv.innerHTML = `🚀 Файл доставлен в Telegram!<br>Пользователю ID: ${TARGET_TELEGRAM_ID}`;
+                    } else {
+                        throw new Error(result.error || result.description || "Ошибка Google-шлюза");
+                    }
                 } else {
-                    throw new Error(result.description || "ошибка Telegram API");
+                    // Прямая отправка в Telegram API
+                    const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+                    const formData = new FormData();
+                    formData.append("chat_id", TARGET_TELEGRAM_ID);
+                    formData.append("document", blob, fullFileName);
+                    formData.append("caption", `📊 Отчет по сканированию\n📁 Файл: ${fullFileName}\n🔢 Кодов: ${scannedCodes.size}`);
+
+                    const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.ok) {
+                        statusDiv.className = "scan-status status-ok";
+                        statusDiv.innerHTML = `🚀 Файл доставлен в Telegram!<br>Пользователю ID: ${TARGET_TELEGRAM_ID}`;
+                    } else {
+                        throw new Error(result.description || "ошибка Telegram API");
+                    }
                 }
             } catch (err) {
                 console.error(err);
@@ -524,7 +629,6 @@
 
         function resetToStart() {
             if (confirm("Начать новую сессию? Текущий список кодов будет очищен.")) {
-                // Очистка при сбросе
                 scannedCodes.clear();
                 document.getElementById("barcode-input").value = "";
                 
